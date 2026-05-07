@@ -25,4 +25,4 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
-        value: https://chat-app-zeta-navy.vercel.app,https://another-domain.vercel.app
+        value: https://chat-ky1d5yd72-suhirdsethi-7871s-projects.vercel.app
