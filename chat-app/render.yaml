@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: chatapp-backend
+    env: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: MONGO_URL
+        value: mongodb+srv://suhird_db_user:usersuhird@cluster0.vpfkg2j.mongodb.net/?appName=Cluster0
+      - key: JWT_SECRET_KEY
+        value: your-secure-secret-key-change-this
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_EXPIRE_MINUTES
+        value: "60"
+      - key: CORS_ORIGINS
+        value: https://chatapp-frontend.onrender.com
+
+  - type: web
+    name: chatapp-frontend
+    env: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
