@@ -638,13 +638,24 @@ function App() {
     return (
       <DashboardPage
         backendStatus={backendStatus}
+        chatError={chatError}
         currentUser={currentUser}
+        groupMembers={groupMembers}
+        groupName={groupName}
         isBootstrappingChat={isBootstrappingChat}
         isConnected={isConnected}
+        onCreateGroup={handleCreateGroup}
+        onGroupNameChange={setGroupName}
         onLogout={handleLogout}
         onOpenMessages={handleOpenMessages}
+        onStartDirectChat={handleStartDirectChat}
+        onStartDirectChatByUsername={handleStartDirectChatByUsername}
+        onToggleGroupMember={toggleGroupMember}
+        onUsernameSearchChange={setUsernameSearch}
         rooms={rooms}
         socketState={socketState}
+        usernameSearch={usernameSearch}
+        users={users}
       />
     )
   }
