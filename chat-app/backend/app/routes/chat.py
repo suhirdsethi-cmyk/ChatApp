@@ -13,9 +13,18 @@ from app.models.chat import (
     MessageCreate,
 )
 from app.models.user import UserSummary
+from app.websocket.manager import manager
 
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+ALLOWED_IMAGE_PREFIXES = (
+    "data:image/jpeg;base64,",
+    "data:image/png;base64,",
+    "data:image/gif;base64,",
+    "data:image/webp;base64,",
+)
+MAX_IMAGE_DATA_URL_LENGTH = 1_400_000
 
 
 def serialize_user_summary(user: dict) -> UserSummary:
@@ -29,6 +38,30 @@ def serialize_user_summary(user: dict) -> UserSummary:
 
 def build_direct_key(member_ids: list[str]) -> str:
     return ":".join(sorted(member_ids))
+
+
+def validate_image_data_url(image_data_url: str | None) -> str | None:
+    if not image_data_url:
+        return None
+
+    if len(image_data_url) > MAX_IMAGE_DATA_URL_LENGTH:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be under 1 MB")
+
+    if not image_data_url.startswith(ALLOWED_IMAGE_PREFIXES):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Image must be a JPG, PNG, GIF, or WebP file",
+        )
+
+    return image_data_url
+
+
+def build_message_preview(content: str, image_data_url: str | None) -> str:
+    if content:
+        return content[:120]
+    if image_data_url:
+        return "Sent an image"
+    return ""
 
 
 async def fetch_users_by_ids(member_ids: list[str]) -> list[dict]:
@@ -75,6 +108,7 @@ async def serialize_message(message: dict) -> ChatMessagePublic:
         room_id=message["room_id"],
         sender=serialize_user_summary(sender),
         content=message["content"],
+        image_data_url=message.get("image_data_url"),
         created_at=message["created_at"],
     )
 
@@ -172,6 +206,31 @@ async def create_group_room(
     return await serialize_room(created_room, current_user_id)
 
 
+@router.delete("/rooms/{room_id}")
+async def delete_room(room_id: str, current_user: dict = Depends(get_current_user)):
+    current_user_id = str(current_user["_id"])
+    room = await require_room_membership(room_id, current_user_id)
+
+    if room["type"] == "group" and room["created_by"] != current_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the group creator can delete this group",
+        )
+
+    member_ids = room.get("member_ids", [])
+    await db.messages.delete_many({"room_id": room_id})
+    await db.rooms.delete_one({"_id": room["_id"]})
+    await manager.broadcast_to_users(
+        member_ids,
+        {
+            "type": "room_deleted",
+            "room_id": room_id,
+        },
+    )
+
+    return {"room_id": room_id}
+
+
 @router.get("/rooms/{room_id}/messages", response_model=list[ChatMessagePublic])
 async def list_room_messages(room_id: str, current_user: dict = Depends(get_current_user)):
     await require_room_membership(room_id, str(current_user["_id"]))
@@ -190,7 +249,8 @@ async def create_room_message(
 ):
     room = await require_room_membership(room_id, str(current_user["_id"]))
     content = payload.content.strip()
-    if not content:
+    image_data_url = validate_image_data_url(payload.image_data_url)
+    if not content and not image_data_url:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message cannot be empty")
 
     now = datetime.now(timezone.utc)
@@ -198,13 +258,14 @@ async def create_room_message(
         "room_id": room_id,
         "sender_id": str(current_user["_id"]),
         "content": content,
+        "image_data_url": image_data_url,
         "created_at": now,
     }
 
     result = await db.messages.insert_one(message_document)
     await db.rooms.update_one(
         {"_id": room["_id"]},
-        {"$set": {"last_message_at": now, "last_message_preview": content[:120]}},
+        {"$set": {"last_message_at": now, "last_message_preview": build_message_preview(content, image_data_url)}},
     )
 
     created_message = await db.messages.find_one({"_id": result.inserted_id})

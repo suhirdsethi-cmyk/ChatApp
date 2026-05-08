@@ -414,14 +414,19 @@
 .primary-button,
 .ghost-button,
 .emoji-button,
+.danger-button,
+.image-upload-button,
 .text-link,
-.room-card {
+.room-card,
+.room-open-button {
   font: inherit;
 }
 
 .primary-button,
 .ghost-button,
-.emoji-button {
+.emoji-button,
+.danger-button,
+.image-upload-button {
   border-radius: 18px;
   padding: 14px 18px;
   cursor: pointer;
@@ -442,7 +447,8 @@
 
 .primary-button:hover,
 .ghost-button:hover,
-.emoji-button:hover {
+.emoji-button:hover,
+.danger-button:hover {
   transform: translateY(-1px);
 }
 
@@ -456,10 +462,40 @@
 }
 
 .ghost-button,
-.emoji-button {
+.emoji-button,
+.image-upload-button {
   border: 1px solid rgba(148, 163, 184, 0.2);
   color: #0f172a;
   background: #eff6ff;
+}
+
+.danger-button {
+  width: fit-content;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  background: #fee2e2;
+  font-weight: 800;
+}
+
+.image-upload-button {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.image-upload-button.disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.image-upload-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .page-switch-copy {
@@ -558,12 +594,21 @@
 }
 
 .room-card {
+  display: grid;
+  gap: 12px;
   text-align: left;
   padding: 16px;
-  border: 0;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.84);
   border: 1px solid rgba(203, 213, 225, 0.9);
+}
+
+.room-open-button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  text-align: left;
+  background: transparent;
   cursor: pointer;
 }
 
@@ -660,6 +705,20 @@
   background: linear-gradient(135deg, #dbeafe, #eef2ff);
 }
 
+.message-image-link {
+  display: block;
+  margin-top: 10px;
+}
+
+.message-image {
+  display: block;
+  max-width: min(360px, 100%);
+  max-height: 320px;
+  border-radius: 14px;
+  object-fit: contain;
+  background: #e2e8f0;
+}
+
 .composer {
   position: relative;
 }
@@ -677,9 +736,38 @@
 
 .composer-tools {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   position: relative;
+}
+
+.image-preview {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 16px;
+  background: #f8fafc;
+  border: 1px solid #dbeafe;
+}
+
+.image-preview img {
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #e2e8f0;
+}
+
+.image-preview strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .emoji-tray {

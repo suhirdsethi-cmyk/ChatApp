@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.user import UserSummary
 
@@ -16,7 +16,14 @@ class GroupRoomCreate(BaseModel):
 
 
 class MessageCreate(BaseModel):
-    content: str = Field(min_length=1, max_length=2000)
+    content: str = Field(default="", max_length=2000)
+    image_data_url: str | None = Field(default=None, max_length=1_400_000)
+
+    @model_validator(mode="after")
+    def require_content_or_image(self):
+        if not self.content.strip() and not self.image_data_url:
+            raise ValueError("Message cannot be empty")
+        return self
 
 
 class ChatMessagePublic(BaseModel):
@@ -24,6 +31,7 @@ class ChatMessagePublic(BaseModel):
     room_id: str
     sender: UserSummary
     content: str
+    image_data_url: str | None = None
     created_at: datetime
 
 

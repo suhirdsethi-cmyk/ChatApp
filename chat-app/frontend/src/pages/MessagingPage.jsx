@@ -21,7 +21,10 @@ function MessagingPage({
   onComposerChange,
   onCreateGroup,
   onGroupNameChange,
+  onImageRemove,
+  onImageSelect,
   onMessageSubmit,
+  onRoomDelete,
   onRoomSelect,
   onStartDirectChat,
   onToggleEmojiTray,
@@ -29,6 +32,7 @@ function MessagingPage({
   onUseEmoji,
   roomMessages,
   rooms,
+  selectedImage,
   showEmojiTray,
   users,
 }) {
@@ -75,7 +79,12 @@ function MessagingPage({
                         <strong>{message.sender.username}</strong>
                         <span>{formatTime(message.created_at)}</span>
                       </div>
-                      <p>{message.content}</p>
+                      {message.image_data_url ? (
+                        <a href={message.image_data_url} target="_blank" rel="noreferrer" className="message-image-link">
+                          <img src={message.image_data_url} alt="Shared attachment" className="message-image" />
+                        </a>
+                      ) : null}
+                      {message.content ? <p>{message.content}</p> : null}
                     </div>
                   </article>
                 )
@@ -88,6 +97,18 @@ function MessagingPage({
               <button type="button" className="emoji-button" onClick={onToggleEmojiTray}>
                 Emoji
               </button>
+              <label className={activeRoom ? 'image-upload-button' : 'image-upload-button disabled'}>
+                Image
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  disabled={!activeRoom}
+                  onChange={(event) => {
+                    onImageSelect(event.target.files?.[0])
+                    event.target.value = ''
+                  }}
+                />
+              </label>
               {showEmojiTray ? (
                 <div className="emoji-tray">
                   {emojiTray.map((emoji) => (
@@ -99,6 +120,18 @@ function MessagingPage({
               ) : null}
             </div>
 
+            {selectedImage ? (
+              <div className="image-preview">
+                <img src={selectedImage.dataUrl} alt="" />
+                <div>
+                  <strong>{selectedImage.name}</strong>
+                  <button type="button" className="text-link" onClick={onImageRemove}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             <textarea
               value={composer}
               onChange={(event) => onComposerChange(event.target.value)}
@@ -107,7 +140,7 @@ function MessagingPage({
               rows={3}
             />
 
-            <button type="submit" className="primary-button" disabled={!activeRoom || !composer.trim()}>
+            <button type="submit" className="primary-button" disabled={!activeRoom || (!composer.trim() && !selectedImage)}>
               Send Message
             </button>
           </form>
@@ -121,18 +154,18 @@ function MessagingPage({
             </div>
             <div className="room-list">
               {rooms.map((room) => (
-                <button
-                  key={room.id}
-                  type="button"
-                  className={`room-card ${room.id === activeRoomId ? 'active' : ''}`}
-                  onClick={() => onRoomSelect(room.id)}
-                >
-                  <div className="room-card-top">
-                    <strong>{room.name}</strong>
-                    <span>{formatTime(room.last_message_at)}</span>
-                  </div>
-                  <p>{room.last_message_preview || 'No messages yet. Start the conversation.'}</p>
-                </button>
+                <article key={room.id} className={`room-card ${room.id === activeRoomId ? 'active' : ''}`}>
+                  <button type="button" className="room-open-button" onClick={() => onRoomSelect(room.id)}>
+                    <div className="room-card-top">
+                      <strong>{room.name}</strong>
+                      <span>{formatTime(room.last_message_at)}</span>
+                    </div>
+                    <p>{room.last_message_preview || 'No messages yet. Start the conversation.'}</p>
+                  </button>
+                  <button type="button" className="danger-button" onClick={() => onRoomDelete(room)}>
+                    {room.type === 'group' ? 'Delete Group' : 'Delete Chat'}
+                  </button>
+                </article>
               ))}
             </div>
           </div>

@@ -44,6 +44,7 @@ function App() {
   const [isBootstrappingChat, setIsBootstrappingChat] = useState(false)
   const [loadingRoomId, setLoadingRoomId] = useState('')
   const [composer, setComposer] = useState('')
+  const [imageDraft, setImageDraft] = useState(null)
   const [showEmojiTray, setShowEmojiTray] = useState(false)
   const [groupName, setGroupName] = useState('')
   const [groupMembers, setGroupMembers] = useState([])
@@ -61,6 +62,7 @@ function App() {
     setActiveRoomId('')
     setChatError('')
     setComposer('')
+    setImageDraft(null)
     setGroupName('')
     setGroupMembers([])
     setShowEmojiTray(false)
@@ -167,6 +169,23 @@ function App() {
       updatedRooms[existingIndex] = nextRoom
       return updatedRooms.sort(sortRoomsByActivity)
     })
+  }
+
+  function removeRoom(roomId) {
+    setRooms((currentRooms) => {
+      const nextRooms = currentRooms.filter((room) => room.id !== roomId)
+      setActiveRoomId((currentActiveRoomId) =>
+        currentActiveRoomId === roomId ? nextRooms[0]?.id || '' : currentActiveRoomId,
+      )
+      return nextRooms
+    })
+    setMessagesByRoom((currentMessagesByRoom) => {
+      const { [roomId]: _removedMessages, ...nextMessagesByRoom } = currentMessagesByRoom
+      return nextMessagesByRoom
+    })
+    setComposer('')
+    setImageDraft(null)
+    setShowEmojiTray(false)
   }
 
   useEffect(() => {
@@ -291,13 +310,18 @@ function App() {
                 ? {
                     ...room,
                     last_message_at: payload.message.created_at,
-                    last_message_preview: payload.message.content,
+                    last_message_preview: payload.message.content || 'Sent an image',
                   }
                 : room,
             )
             .sort(sortRoomsByActivity),
         )
       })
+      return
+    }
+
+    if (payload.type === 'room_deleted') {
+      removeRoom(payload.room_id)
       return
     }
 
@@ -422,6 +446,24 @@ function App() {
     }
   }
 
+  async function handleDeleteRoom(room) {
+    const roomTypeLabel = room.type === 'group' ? 'group' : 'chat'
+    const confirmed = window.confirm(`Delete ${roomTypeLabel} "${room.name}"? This removes all messages.`)
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      await apiRequest(`/api/chat/rooms/${room.id}`, {
+        method: 'DELETE',
+      })
+      removeRoom(room.id)
+      setChatError('')
+    } catch (error) {
+      setChatError(error.message)
+    }
+  }
+
   function handleOpenMessages(roomId) {
     setActiveRoomId(roomId)
     goTo('/messages')
@@ -438,11 +480,12 @@ function App() {
   async function sendMessage(event) {
     event.preventDefault()
     const content = composer.trim()
-    if (!content || !activeRoomId) {
+    if ((!content && !imageDraft) || !activeRoomId) {
       return
     }
 
     setComposer('')
+    setImageDraft(null)
     setShowEmojiTray(false)
 
     if (websocketRef.current?.readyState === WebSocket.OPEN) {
@@ -451,6 +494,7 @@ function App() {
           type: 'send_message',
           room_id: activeRoomId,
           content,
+          image_data_url: imageDraft?.dataUrl || null,
         }),
       )
       return
@@ -459,7 +503,7 @@ function App() {
     try {
       const createdMessage = await apiRequest(`/api/chat/rooms/${activeRoomId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, image_data_url: imageDraft?.dataUrl || null }),
       })
 
       setMessagesByRoom((current) => ({
@@ -474,7 +518,7 @@ function App() {
               ? {
                   ...room,
                   last_message_at: createdMessage.created_at,
-                  last_message_preview: createdMessage.content,
+                  last_message_preview: createdMessage.content || 'Sent an image',
                 }
               : room,
           )
@@ -483,6 +527,35 @@ function App() {
     } catch (error) {
       setChatError(error.message)
     }
+  }
+
+  function handleImageSelect(file) {
+    if (!file) {
+      return
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setChatError('Choose an image file.')
+      return
+    }
+
+    if (file.size > 1_000_000) {
+      setChatError('Images must be under 1 MB.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      setImageDraft({
+        dataUrl: reader.result,
+        name: file.name,
+      })
+      setChatError('')
+    }
+    reader.onerror = () => {
+      setChatError('Could not read that image. Try another file.')
+    }
+    reader.readAsDataURL(file)
   }
 
   const activeRoom = rooms.find((room) => room.id === activeRoomId) ?? null
@@ -549,7 +622,10 @@ function App() {
         onComposerChange={setComposer}
         onCreateGroup={handleCreateGroup}
         onGroupNameChange={setGroupName}
+        onImageRemove={() => setImageDraft(null)}
+        onImageSelect={handleImageSelect}
         onMessageSubmit={sendMessage}
+        onRoomDelete={handleDeleteRoom}
         onRoomSelect={setActiveRoomId}
         onStartDirectChat={handleStartDirectChat}
         onToggleEmojiTray={() => setShowEmojiTray((current) => !current)}
@@ -557,6 +633,7 @@ function App() {
         onUseEmoji={(emoji) => setComposer((current) => `${current}${emoji}`)}
         roomMessages={roomMessages}
         rooms={rooms}
+        selectedImage={imageDraft}
         showEmojiTray={showEmojiTray}
         users={users}
       />

@@ -11,6 +11,14 @@ from app.websocket.manager import manager
 
 router = APIRouter(tags=["websocket"])
 
+ALLOWED_IMAGE_PREFIXES = (
+    "data:image/jpeg;base64,",
+    "data:image/png;base64,",
+    "data:image/gif;base64,",
+    "data:image/webp;base64,",
+)
+MAX_IMAGE_DATA_URL_LENGTH = 1_400_000
+
 
 def serialize_user_summary(user: dict) -> UserSummary:
     return UserSummary(
@@ -40,6 +48,21 @@ async def broadcast_presence(user: dict, is_online: bool) -> None:
         },
     }
     await manager.broadcast_to_users(related_member_ids, payload)
+
+
+def is_valid_image_data_url(image_data_url: str) -> bool:
+    return (
+        len(image_data_url) <= MAX_IMAGE_DATA_URL_LENGTH
+        and image_data_url.startswith(ALLOWED_IMAGE_PREFIXES)
+    )
+
+
+def build_message_preview(content: str, image_data_url: str | None) -> str:
+    if content:
+        return content[:120]
+    if image_data_url:
+        return "Sent an image"
+    return ""
 
 
 @router.websocket("/ws/chat")
@@ -76,7 +99,14 @@ async def chat_websocket(websocket: WebSocket):
 
             room_id = data.get("room_id", "")
             content = str(data.get("content", "")).strip()
-            if not ObjectId.is_valid(room_id) or not content:
+            raw_image_data_url = data.get("image_data_url")
+            image_data_url = raw_image_data_url if isinstance(raw_image_data_url, str) else None
+
+            if image_data_url and not is_valid_image_data_url(image_data_url):
+                await websocket.send_json({"type": "error", "message": "Image must be JPG, PNG, GIF, or WebP and under 1 MB"})
+                continue
+
+            if not ObjectId.is_valid(room_id) or (not content and not image_data_url):
                 await websocket.send_json({"type": "error", "message": "Invalid message payload"})
                 continue
 
@@ -90,12 +120,13 @@ async def chat_websocket(websocket: WebSocket):
                 "room_id": room_id,
                 "sender_id": user_id,
                 "content": content[:2000],
+                "image_data_url": image_data_url,
                 "created_at": now,
             }
             result = await db.messages.insert_one(message_document)
             await db.rooms.update_one(
                 {"_id": room["_id"]},
-                {"$set": {"last_message_at": now, "last_message_preview": content[:120]}},
+                {"$set": {"last_message_at": now, "last_message_preview": build_message_preview(content[:2000], image_data_url)}},
             )
 
             payload = {
@@ -106,6 +137,7 @@ async def chat_websocket(websocket: WebSocket):
                     "room_id": room_id,
                     "sender": serialize_user_summary({**user, "is_online": True}).model_dump(),
                     "content": content[:2000],
+                    "image_data_url": image_data_url,
                     "created_at": now.isoformat(),
                 },
             }
