@@ -8,6 +8,7 @@ from app.database.db import db
 from app.models.chat import (
     ChatMessagePublic,
     ChatRoomPublic,
+    DirectRoomByUsernameCreate,
     DirectRoomCreate,
     GroupRoomCreate,
     MessageCreate,
@@ -123,32 +124,14 @@ async def require_room_membership(room_id: str, user_id: str) -> dict:
     return room
 
 
-@router.get("/rooms", response_model=list[ChatRoomPublic])
-async def list_rooms(current_user: dict = Depends(get_current_user)):
+async def create_or_get_direct_room(current_user: dict, recipient: dict) -> ChatRoomPublic:
     current_user_id = str(current_user["_id"])
-    rooms = await db.rooms.find(
-        {"member_ids": current_user_id},
-        sort=[("last_message_at", -1), ("created_at", -1)],
-    ).to_list(length=200)
-    return [await serialize_room(room, current_user_id) for room in rooms]
+    recipient_id = str(recipient["_id"])
 
-
-@router.post("/rooms/direct", response_model=ChatRoomPublic, status_code=status.HTTP_201_CREATED)
-async def create_direct_room(
-    payload: DirectRoomCreate,
-    current_user: dict = Depends(get_current_user),
-):
-    current_user_id = str(current_user["_id"])
-    if payload.recipient_id == current_user_id:
+    if recipient_id == current_user_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose another user")
-    if not ObjectId.is_valid(payload.recipient_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient not found")
 
-    recipient = await db.users.find_one({"_id": ObjectId(payload.recipient_id)})
-    if recipient is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient not found")
-
-    member_ids = [current_user_id, payload.recipient_id]
+    member_ids = [current_user_id, recipient_id]
     direct_key = build_direct_key(member_ids)
 
     existing_room = await db.rooms.find_one({"direct_key": direct_key})
@@ -172,6 +155,68 @@ async def create_direct_room(
     return await serialize_room(created_room, current_user_id)
 
 
+async def add_friendship(current_user: dict, recipient: dict) -> None:
+    current_user_id = str(current_user["_id"])
+    recipient_id = str(recipient["_id"])
+
+    await db.users.update_one(
+        {"_id": current_user["_id"]},
+        {"$addToSet": {"friend_ids": recipient_id}},
+    )
+    await db.users.update_one(
+        {"_id": recipient["_id"]},
+        {"$addToSet": {"friend_ids": current_user_id}},
+    )
+
+
+def require_existing_friend(current_user: dict, recipient_id: str) -> None:
+    if recipient_id not in current_user.get("friend_ids", []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Add this person by username before messaging them",
+        )
+
+
+@router.get("/rooms", response_model=list[ChatRoomPublic])
+async def list_rooms(current_user: dict = Depends(get_current_user)):
+    current_user_id = str(current_user["_id"])
+    rooms = await db.rooms.find(
+        {"member_ids": current_user_id},
+        sort=[("last_message_at", -1), ("created_at", -1)],
+    ).to_list(length=200)
+    return [await serialize_room(room, current_user_id) for room in rooms]
+
+
+@router.post("/rooms/direct", response_model=ChatRoomPublic, status_code=status.HTTP_201_CREATED)
+async def create_direct_room(
+    payload: DirectRoomCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    if not ObjectId.is_valid(payload.recipient_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient not found")
+
+    recipient = await db.users.find_one({"_id": ObjectId(payload.recipient_id)})
+    if recipient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient not found")
+
+    require_existing_friend(current_user, payload.recipient_id)
+    return await create_or_get_direct_room(current_user, recipient)
+
+
+@router.post("/rooms/direct/by-username", response_model=ChatRoomPublic, status_code=status.HTTP_201_CREATED)
+async def create_direct_room_by_username(
+    payload: DirectRoomByUsernameCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    username_lookup = payload.username.strip().lower()
+    recipient = await db.users.find_one({"username_lookup": username_lookup})
+    if recipient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Username not found")
+
+    await add_friendship(current_user, recipient)
+    return await create_or_get_direct_room(current_user, recipient)
+
+
 @router.post("/rooms/group", response_model=ChatRoomPublic, status_code=status.HTTP_201_CREATED)
 async def create_group_room(
     payload: GroupRoomCreate,
@@ -189,6 +234,15 @@ async def create_group_room(
     members = await fetch_users_by_ids(unique_member_ids)
     if len(members) != len(unique_member_ids):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Some users were not found")
+
+    friend_ids = set(current_user.get("friend_ids", []))
+    requested_other_member_ids = set(unique_member_ids)
+    requested_other_member_ids.discard(current_user_id)
+    if not requested_other_member_ids.issubset(friend_ids):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only add friends to a group",
+        )
 
     now = datetime.now(timezone.utc)
     room_document = {

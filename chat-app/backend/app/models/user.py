@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserCreate(BaseModel):
-    username: str = Field(min_length=3, max_length=30)
+    username: str = Field(min_length=3, max_length=30, pattern=r"^[A-Za-z0-9_]+$")
     email: str = Field(min_length=5, max_length=255)
     password: str = Field(min_length=6, max_length=128)
 

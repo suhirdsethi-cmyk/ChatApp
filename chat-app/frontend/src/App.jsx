@@ -48,6 +48,7 @@ function App() {
   const [showEmojiTray, setShowEmojiTray] = useState(false)
   const [groupName, setGroupName] = useState('')
   const [groupMembers, setGroupMembers] = useState([])
+  const [usernameSearch, setUsernameSearch] = useState('')
   const [socketState, setSocketState] = useState('offline')
   const websocketRef = useRef(null)
 
@@ -65,6 +66,7 @@ function App() {
     setImageDraft(null)
     setGroupName('')
     setGroupMembers([])
+    setUsernameSearch('')
     setShowEmojiTray(false)
     setSocketState('offline')
   }
@@ -168,6 +170,22 @@ function App() {
       const updatedRooms = [...currentRooms]
       updatedRooms[existingIndex] = nextRoom
       return updatedRooms.sort(sortRoomsByActivity)
+    })
+  }
+
+  function mergeFriendsFromRoom(nextRoom) {
+    setUsers((currentUsers) => {
+      const currentUserIds = new Set(currentUsers.map((user) => user.id))
+      const newFriends = nextRoom.members.filter(
+        (member) => member.id !== currentUser?.id && !currentUserIds.has(member.id),
+      )
+      if (newFriends.length === 0) {
+        return currentUsers
+      }
+
+      return [...currentUsers, ...newFriends].sort((userA, userB) =>
+        userA.username.localeCompare(userB.username),
+      )
     })
   }
 
@@ -413,7 +431,32 @@ function App() {
         body: JSON.stringify({ recipient_id: userId }),
       })
       mergeRoom(room)
+      mergeFriendsFromRoom(room)
       setActiveRoomId(room.id)
+      goTo('/messages')
+    } catch (error) {
+      setChatError(error.message)
+    }
+  }
+
+  async function handleStartDirectChatByUsername(event) {
+    event.preventDefault()
+    const username = usernameSearch.trim()
+    if (!username) {
+      setChatError('Enter a username.')
+      return
+    }
+
+    try {
+      const room = await apiRequest('/api/chat/rooms/direct/by-username', {
+        method: 'POST',
+        body: JSON.stringify({ username }),
+      })
+      mergeRoom(room)
+      mergeFriendsFromRoom(room)
+      setActiveRoomId(room.id)
+      setUsernameSearch('')
+      setChatError('')
       goTo('/messages')
     } catch (error) {
       setChatError(error.message)
@@ -628,6 +671,7 @@ function App() {
         onRoomDelete={handleDeleteRoom}
         onRoomSelect={setActiveRoomId}
         onStartDirectChat={handleStartDirectChat}
+        onStartDirectChatByUsername={handleStartDirectChatByUsername}
         onToggleEmojiTray={() => setShowEmojiTray((current) => !current)}
         onToggleGroupMember={toggleGroupMember}
         onUseEmoji={(emoji) => setComposer((current) => `${current}${emoji}`)}
@@ -635,7 +679,9 @@ function App() {
         rooms={rooms}
         selectedImage={imageDraft}
         showEmojiTray={showEmojiTray}
+        usernameSearch={usernameSearch}
         users={users}
+        onUsernameSearchChange={setUsernameSearch}
       />
     )
   }

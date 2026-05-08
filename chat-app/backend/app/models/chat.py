@@ -10,6 +10,10 @@ class DirectRoomCreate(BaseModel):
     recipient_id: str
 
 
+class DirectRoomByUsernameCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=30)
+
+
 class GroupRoomCreate(BaseModel):
     name: str = Field(min_length=2, max_length=60)
     member_ids: list[str] = Field(default_factory=list)

@@ -369,6 +369,7 @@
 
 .auth-form,
 .group-form,
+.username-search-form,
 .composer {
   display: grid;
   gap: 18px;
@@ -388,6 +389,7 @@
 
 .auth-form input,
 .group-form input,
+.username-search-form input,
 .composer textarea {
   width: 100%;
   box-sizing: border-box;
@@ -405,6 +407,7 @@
 
 .auth-form input:focus,
 .group-form input:focus,
+.username-search-form input:focus,
 .composer textarea:focus {
   outline: none;
   border-color: #0f766e;
@@ -813,6 +816,12 @@
   border-radius: 24px;
   background: rgba(255, 255, 255, 0.86);
   border: 1px solid rgba(203, 213, 225, 0.9);
+}
+
+.username-search-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 10px;
 }
 
 .group-member-grid {

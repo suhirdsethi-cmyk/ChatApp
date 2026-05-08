@@ -37,20 +37,28 @@ def serialize_user_summary(user: dict) -> UserSummary:
 async def signup(user: UserCreate):
     normalized_email = user.email.strip().lower()
     normalized_username = user.username.strip()
+    username_lookup = normalized_username.lower()
 
-    existing_user = await db.users.find_one(
-        {"$or": [{"email": normalized_email}, {"username": normalized_username}]}
-    )
-    if existing_user:
+    existing_email = await db.users.find_one({"email": normalized_email})
+    if existing_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email or username already exists",
+            detail="Email is already in use",
+        )
+
+    existing_username = await db.users.find_one({"username_lookup": username_lookup})
+    if existing_username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username is already in use",
         )
 
     user_document = {
         "username": normalized_username,
+        "username_lookup": username_lookup,
         "email": normalized_email,
         "password": hash_password(user.password),
+        "friend_ids": [],
         "is_online": False,
         "created_at": datetime.now(timezone.utc),
     }
@@ -58,9 +66,13 @@ async def signup(user: UserCreate):
     try:
         result = await db.users.insert_one(user_document)
     except DuplicateKeyError as exc:
+        error_message = str(exc)
+        detail = "Email is already in use"
+        if "username_lookup" in error_message or "username" in error_message:
+            detail = "Username is already in use"
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email or username already exists",
+            detail=detail,
         ) from exc
 
     created_user = await db.users.find_one({"_id": ObjectId(result.inserted_id)})
@@ -90,8 +102,16 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 
 @router.get("/users", response_model=list[UserSummary])
 async def list_users(current_user: dict = Depends(get_current_user)):
+    friend_ids = current_user.get("friend_ids", [])
+    if not friend_ids:
+        return []
+
+    object_ids = [ObjectId(friend_id) for friend_id in friend_ids if ObjectId.is_valid(friend_id)]
+    if not object_ids:
+        return []
+
     cursor = db.users.find(
-        {"_id": {"$ne": current_user["_id"]}},
+        {"_id": {"$in": object_ids}},
         sort=[("is_online", -1), ("username", 1)],
     )
     users = await cursor.to_list(length=500)

@@ -27,13 +27,16 @@ function MessagingPage({
   onRoomDelete,
   onRoomSelect,
   onStartDirectChat,
+  onStartDirectChatByUsername,
   onToggleEmojiTray,
   onToggleGroupMember,
+  onUsernameSearchChange,
   onUseEmoji,
   roomMessages,
   rooms,
   selectedImage,
   showEmojiTray,
+  usernameSearch,
   users,
 }) {
   return (
@@ -172,11 +175,24 @@ function MessagingPage({
 
           <div className="panel-section">
             <div className="section-title-row">
-              <h3>People</h3>
+              <h3>Friends</h3>
               <span>{users.length}</span>
             </div>
+            <form className="username-search-form" onSubmit={onStartDirectChatByUsername}>
+              <input
+                type="text"
+                value={usernameSearch}
+                onChange={(event) => onUsernameSearchChange(event.target.value)}
+                placeholder="Enter unique username"
+              />
+              <button type="submit" className="primary-button" disabled={!usernameSearch.trim()}>
+                Add Person
+              </button>
+            </form>
             <div className="user-list">
-              {users.map((user) => (
+              {users.length === 0 ? (
+                <p className="empty-state">Add a person by their exact username to see them here.</p>
+              ) : users.map((user) => (
                 <article key={user.id} className="user-card">
                   <div>
                     <strong>{user.username}</strong>
