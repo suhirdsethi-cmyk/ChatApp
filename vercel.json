@@ -1,0 +1,11 @@
+{
+  "installCommand": "cd chat-app/frontend && npm install",
+  "buildCommand": "cd chat-app/frontend && npm run build",
+  "outputDirectory": "chat-app/frontend/dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
+  ]
+}
